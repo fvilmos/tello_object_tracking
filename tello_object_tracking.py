@@ -55,14 +55,7 @@ if __name__=="__main__":
     if tello.debug == True: pspeed = 50
 
     # ask stats periodically
-    tello.add_periodic_event('battery?',30,'Battery')
-    tello.add_periodic_event('height?',10,'Height')
-    tello.add_periodic_event('temp?',50,'Temparature')
-    tello.add_periodic_event('tof?',15,'HighSensor')
     tello.add_periodic_event('wifi?',40,'Wifi')
-    tello.add_periodic_event('baro?',20,'Barometer')
-    tello.add_periodic_event('acceleration?',5,'Acceleration')
-
 
     # wait till connected, than proceed
     tello.wait_till_connected()

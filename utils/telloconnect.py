@@ -12,13 +12,17 @@ class TelloConnect:
     import cv2
     from queue import Queue
 
-    def __init__(self,TELLOIP='192.168.10.1', UDPPORT=8889, VIDEO_SOURCE="udp://@0.0.0.0:11111", DEBUG=False) -> None:
+    def __init__(self,TELLOIP='192.168.10.1', UDPPORT=8889, VIDEO_SOURCE="udp://@0.0.0.0:11111",UDPSTATEPORT=8890, DEBUG=False) -> None:
 
-        self.localaddr = ('',9000)
+        self.localaddr = ('',UDPPORT)
         self.telloaddr = (TELLOIP,UDPPORT)
         self.video_source = VIDEO_SOURCE
+        self.stateaddr = ('',UDPSTATEPORT)
 
         self.debug = DEBUG
+
+        # record satate value
+        self.state_value = []
     
         # image size
         self.image_size = (640,480)
@@ -49,9 +53,13 @@ class TelloConnect:
         # add first periodic command to be sent, keep-alive
         self.eventlist.append({'cmd':'command','period':100,'info':''})
 
-        # create UDP packet, for commands
+        # # create UDP packet, for commands
         self.sock_cmd = self.socket.socket(self.socket.AF_INET, self.socket.SOCK_DGRAM)
         self.sock_cmd.bind(self.localaddr)
+
+        # tello state
+        self.sock_state = self.socket.socket(self.socket.AF_INET, self.socket.SOCK_DGRAM)
+        self.sock_state.bind(self.stateaddr)
 
         # start receive thread
         self.receiverThread = safethread.SafeThread(target=self.__receive)
@@ -62,6 +70,9 @@ class TelloConnect:
         
         # start video thread
         self.videoThread = safethread.SafeThread(target=self.__video)
+
+        # start video thread
+        self.stateThread = safethread.SafeThread(target=self.__state_receive)
 
     def set_image_size(self, image_size=(960,720)):
         """Set size of the aptured image
@@ -146,10 +157,20 @@ class TelloConnect:
         except Exception:
             pass
 
+    def __state_receive(self):
+        """Receive UDP return string
+        """
+        data, _ = self.sock_state.recvfrom(512)
+        val = data.decode(encoding="utf-8").rstrip()
+
+        # data split
+        self.state_value = val.replace(';',':').split(':')
+
     def stop_communication(self):
         """Close commnucation threads
         """
         self.receiverThread.stop()
+        self.stateThread.stop()
         self.eventThread.stop()
 
         # close the socket too
@@ -161,6 +182,7 @@ class TelloConnect:
         # start communication / listens to UDP
         if self.receiverThread.isAlive() is not True: self.receiverThread.start()
         if self.eventThread.isAlive() is not True:  self.eventThread.start()
+        if self.stateThread.isAlive() is not True:  self.stateThread.start()
         
 
     def start_video(self):

@@ -190,37 +190,25 @@ class FollowObject():
         """
         sizef = 0.5
         typef = cv2.FONT_HERSHEY_SIMPLEX
-        color = [0,0,255]
+        color = [0,255,255]
         sizeb = 2
         if img is not None:
 
             h,w = img.shape[:2]
 
-            if HUD:
+            if HUD and self.tello.state_value is not None:
+                hud =self.tello.state_value
+                cv2.putText(img,str('Battery') + ": " + str(hud[21]),(w//2-100,20),typef,sizef,color,sizeb)
+                cv2.putText(img,str('Height') + ": " + str(hud[19]),(30,20),typef,sizef,color,sizeb)
+                cv2.putText(img,str('Tof') + ": " + str(hud[17]),(30,40),typef,sizef,color,sizeb)
+                cv2.putText(img,str('Temp') + ": " + str(hud[15]),(w//2+100,20),typef,sizef,color,sizeb)
+                cv2.putText(img,str('Baro') + ": " + str(hud[23]),(w//2+100,40),typef,sizef,color,sizeb)
+                cv2.putText(img,str('Acceleration') + ": " + 'agx'+ " "+ str(hud[-6]) + ' agy'+ " "+ str(hud[-4]) + ' agz'+ " "+ str(hud[-2]),(30,h-30),typef,sizef,color,sizeb)
+
                 for ev in self.tello.eventlist:
                     ret = ev['cmd']
-                    if ret is not None:
-                        if ret == 'battery?':
-                            cv2.putText(img,str(ev['info']) + ": " + str(ev['val']),(w//2-100,20),typef,sizef,color,sizeb)
-                        
-                        if ret == 'height?':
-                            cv2.putText(img,str(ev['info']) + ": " + str(ev['val']),(30,20),typef,sizef,color,sizeb)
-                        
-                        if ret == 'tof?':
-                            cv2.putText(img,str(ev['info']) + ": " + str(ev['val']),(30,40),typef,sizef,color,sizeb)
-                        
-                        if ret == 'temp?':
-                            cv2.putText(img,str(ev['info']) + ": " + str(ev['val']),(w//2+100,20),typef,sizef,color,sizeb)
-
-                        if ret == 'wifi?':
-                            cv2.putText(img,str(ev['info']) + ": " + str(ev['val']),(w//2-100,40),typef,sizef,color,sizeb)
-
-                        if ret == 'baro?':
-                            cv2.putText(img,str(ev['info']) + ": " + str(ev['val']),(w//2+100,40),typef,sizef,color,sizeb)
-                        
-                        if ret == 'acceleration?':
-                            cv2.putText(img,str(ev['info']) + ": " + str(ev['val']).replace(';',' '),(30,h-30),typef,sizef,color,sizeb)
-                        
+                    if ret is not None and ret == 'wifi?':
+                        cv2.putText(img,str(ev['info']) + ": " + str(ev['val']),(w//2-100,40),typef,sizef,color,sizeb)
 
             # handle detection visualization
             if self.det is not None:            
