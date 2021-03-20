@@ -1,9 +1,9 @@
 import cv2
 import threading
+import numpy as np
 from . import safethread
 from . import kalman
-from . import dnnfacedetect
-
+from . import dnnobjectdetect
 
 
 class FollowObject():
@@ -12,13 +12,13 @@ class FollowObject():
     Horizontal / vertical / FW/BackW / yaw are controlled, using Kalman filters.
     """
 
-    def __init__(self, tello, CAFFEMODEL='',PROTO='', CONFIDENCE=0.8, DEBUG=False) -> None:
+    def __init__(self, tello, MODEL='',PROTO='', CONFIDENCE=0.8, DETECT='Face', DEBUG=False) -> None:
         
         # face detector
-        if CAFFEMODEL !='' and PROTO!='':
-            self.dnnfacedetect = dnnfacedetect.DnnFaceDetect(CAFFEMODEL,PROTO, CONFIDENCE=CONFIDENCE)
+        if MODEL !='' and PROTO!='':
+            self.dnnfacedetect = dnnobjectdetect.DnnObjectDetect(MODEL,PROTO, CONFIDENCE=CONFIDENCE, DETECT=DETECT)
         else:
-            self.dnnfacedetect = dnnfacedetect.DnnFaceDetect(CONFIDENCE=CONFIDENCE)
+            self.dnnfacedetect = dnnobjectdetect.DnnObjectDetect(CONFIDENCE=CONFIDENCE,DETECT=DETECT)
 
         self.tello = tello
 
@@ -34,6 +34,7 @@ class FollowObject():
 
         self.img = None
         self.det = None
+        self.tp = None
 
         # tracking options
         self.use_vertical_tracking = True
@@ -43,6 +44,7 @@ class FollowObject():
 
         # distance between object and drone
         self.dist_setpoint = 100
+        self.area_setpoint = 13
 
         self.cx = 0
         self.cy = 0
@@ -57,7 +59,7 @@ class FollowObject():
         # Kalman estimator scale factors
         self.kvscale = 6
         self.khscale = 4
-        self.distscale = 2
+        self.distscale = 3
 
         self.wt = safethread.SafeThread(target=self.__worker).start()
     
@@ -69,6 +71,15 @@ class FollowObject():
             DISTANCE (int, optional): [description]. Defaults to 100.
         """
         self.dist_setpoint = DISTANCE
+    
+    def set_default_area(self,DISTANCE=13):
+        """
+        Set area ration of person tracking
+
+        Args:
+            DISTANCE (int, optional): [description]. Defaults to 100.
+        """
+        self.area_setpoint = DISTANCE
 
     
     def set_tracking(self, HORIZONTAL=False, VERTICAL=True, DISTANCE=True, ROTATION=True):
@@ -102,6 +113,26 @@ class FollowObject():
         """
         self.cycle_activation = PERIOD
 
+    def safety_limiter(self,leftright,fwdbackw,updown,yaw, SAFETYLIMIT=30):
+        """
+        Implement a safety limiter if values exceed defined threshold
+
+        Args:
+            leftright ([type]): control value for left right
+            fwdbackw ([type]): control value for forward backward
+            updown ([type]): control value up down
+            yaw ([type]): control value rotation
+        """
+        val = np.array([leftright,fwdbackw,updown,yaw])
+
+        # test uppler lover levels
+        val[val>=SAFETYLIMIT] = SAFETYLIMIT
+        val[val<=-SAFETYLIMIT] = -SAFETYLIMIT
+
+        return val[0],val[1],val[2],val[3]
+
+
+
     def __worker(self):
         """Worker thread to process command / detections
         """
@@ -119,10 +150,11 @@ class FollowObject():
             img = self.img.copy()
 
             # detect face
-            det = self.dnnfacedetect.detect(img)
+            tp,det = self.dnnfacedetect.detect(img)
 
             if  len(det) > 0:
                 self.det = det
+                self.tp = tp
                 
                 # init estimators
                 if self.track == False:
@@ -132,26 +164,23 @@ class FollowObject():
                     self.kf.init(self.cx,self.cy)
 
                     # compute init 'area', ignor x dimension
-                    self.kfarea.init(1,self.det[0][3])
+                    self.kfarea.init(1,tp[1])
                     self.track = True
 
                 # process corrections, compute delta between two objects
-                detx = self.det[0][0] + self.det[0][2]/2
-                dety = self.det[0][1] + self.det[0][3]/2
-                lp,cp = self.kf.predictAndUpdate(self.cx,self.cy,True)
+                _,cp = self.kf.predictAndUpdate(self.cx,self.cy,True)
 
                 # calculate delta over 2 axis
-                mvx = -int((cp[0]-detx)//self.kvscale)
-                mvy = int((cp[1]-dety)//self.khscale)
+                mvx = -int((cp[0]-tp[0])//self.kvscale)
+                mvy = int((cp[1]-tp[1])//self.khscale)
 
                 if self.use_distance_tracking:
                     # use detection y value to estimate object distance
-                    obj_y = self.det[0][3]
+                    obj_y = tp[2]
 
                     _, ocp = self.kfarea.predictAndUpdate(1, obj_y, True)
 
                     dist = int((ocp[1]-self.dist_setpoint)//self.distscale)
-
 
                 # Fill out variables to be sent in the tello command
                 # don't combine horizontal and rotation
@@ -164,6 +193,9 @@ class FollowObject():
 
                 if self.use_vertical_tracking:
                     vy = mvy
+
+                # limit signals if is the case, could save your tello
+                vx,dist,vy,rx = self.safety_limiter(vx,dist,vy,rx,SAFETYLIMIT=40)
 
                 cmd = "rc {leftright} {fwdbackw} {updown} {yaw}".format(leftright=vx,fwdbackw=-dist,updown=vy,yaw=rx)
                 self.tello.send_cmd(cmd)
@@ -196,7 +228,7 @@ class FollowObject():
 
             h,w = img.shape[:2]
 
-            if HUD and self.tello.state_value is not None:
+            if HUD and self.tello.state_value is not None and len(self.tello.state_value)>0:
                 hud =self.tello.state_value
                 cv2.putText(img,str('Battery') + ": " + str(hud[21]),(w//2-100,20),typef,sizef,color,sizeb)
                 cv2.putText(img,str('Height') + ": " + str(hud[19]),(30,20),typef,sizef,color,sizeb)
@@ -218,8 +250,6 @@ class FollowObject():
                     else:
                         cv2.rectangle(img,(val[0],val[1]),(val[0]+val[2],val[1]+val[3]),[0,255,0],2)
                     
-                    detx = val[0] + int(val[2]/2)
-                    dety = val[1] + int(val[3]/2)
-                    cv2.circle(img,(detx,dety),3,[0,0,255],-1)
+                    cv2.circle(img,(self.tp[0],self.tp[1]),3,[0,0,255],-1)
                 cv2.circle(img,(int(w/2),int(h/2)),4,[0,255,0],1)
-                cv2.line(img,(int(w/2),int(h/2)),(detx,dety),[0,255,0],2)
+                cv2.line(img,(int(w/2),int(h/2)),(self.tp[0],self.tp[1]),[0,255,0],2)

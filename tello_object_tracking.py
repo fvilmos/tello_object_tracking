@@ -14,8 +14,10 @@ if __name__=="__main__":
 
     # input arguments
     parser = argparse.ArgumentParser(description='Tello Object tracker. keys: t-takeoff, l-land, v-video, q-quit w-up, s-down, a-ccw rotate, d-cw rotate\n')
-    parser.add_argument('-model', type=str, help='Face detector caffe model', default='')
-    parser.add_argument('-proto', type=str, help='Caffe prototxt file', default='')
+    parser.add_argument('-model', type=str, help='DNN model caffe or tensorflow, see data folder', default='')
+    parser.add_argument('-proto', type=str, help='Prototxt file, see data folder', default='')
+    parser.add_argument('-obj', type=str, help='Type of object to track. [Face, Person], default = Face', default='Face')
+    parser.add_argument('-dconf', type=float, help='Detection confidence, default = 0.7', default=0.7)
     parser.add_argument('-debug', type=bool, help='Enable debug, lists messages in console', default=False)
     parser.add_argument('-video', type=str, help='Use as inputs a video file, no tello needed, debug must be True', default="")
     parser.add_argument('-vsize', type=list, help='Video size received from tello', default=(640,480))
@@ -50,9 +52,9 @@ if __name__=="__main__":
         tello = TelloConnect(DEBUG=False)
     tello.set_image_size(imgsize)
     
-    videow = cv2.VideoWriter('out.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 25, (imgsize))
+    videow = cv2.VideoWriter('out.avi',cv2.VideoWriter_fourcc('M','J','P','G'), 30, (imgsize))
 
-    if tello.debug == True: pspeed = 50
+    if tello.debug == True: pspeed = 30
 
     # ask stats periodically
     tello.add_periodic_event('wifi?',40,'Wifi')
@@ -62,8 +64,7 @@ if __name__=="__main__":
     tello.start_communication()
     tello.start_video()
 
-
-    fobj = FollowObject(tello,CAFFEMODEL=args.model,PROTO=args.proto,CONFIDENCE=0.8, DEBUG=False)
+    fobj = FollowObject(tello, MODEL=args.model, PROTO=args.proto, CONFIDENCE=args.dconf, DEBUG=False, DETECT=args.obj)
     fobj.set_tracking( HORIZONTAL=args.th, VERTICAL=args.tv,DISTANCE=args.td, ROTATION=args.tr)
 
     while True:
@@ -94,7 +95,7 @@ if __name__=="__main__":
             else: writevideo = False
         
         if writevideo == True:
-            videow.write(imghud)
+            videow.write(img)
 
         # exit
         if k == ord('q'):
