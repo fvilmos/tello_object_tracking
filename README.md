@@ -26,7 +26,7 @@ Typical usage (object detection / tracking):
 ```
 python3 tello_object_tracking.py -proto ./data/ssd_mobilenet_v1_coco_2017_11_17.pbtxt -model ./data/frozen_inference_graph.pb -obj Person -dconf 0.4
 
-DEBUG for mode
+For DEBUG mode
 
 python3 tello_object_tracking.py -proto ./data/ssd_mobilenet_v1_coco_2017_11_17.pbtxt -model ./data/frozen_inference_graph.pb -obj Person -debug True -video ./data/<your video.avi> -dconf 0.4
 ```
